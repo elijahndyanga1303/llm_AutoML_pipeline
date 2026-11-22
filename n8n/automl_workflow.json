@@ -1,0 +1,405 @@
+{
+  "name": "AutoML trainer",
+  "nodes": [
+    {
+      "id": "n1",
+      "name": "Upload form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "automl-upload-form",
+      "parameters": {
+        "formTitle": "AutoML trainer",
+        "formDescription": "Upload a CSV, pick an algorithm and the EDA plots you want. An LLM analyses the data, picks the columns to plot and trains the model.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Dataset (CSV)",
+              "fieldType": "file",
+              "multipleFiles": false,
+              "acceptFileTypes": ".csv",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Algorithm",
+              "fieldType": "dropdown",
+              "requiredField": true,
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "random_forest"
+                  },
+                  {
+                    "option": "gradient_boosting"
+                  },
+                  {
+                    "option": "xgboost"
+                  },
+                  {
+                    "option": "logistic_regression"
+                  },
+                  {
+                    "option": "linear_regression"
+                  },
+                  {
+                    "option": "ridge"
+                  },
+                  {
+                    "option": "decision_tree"
+                  },
+                  {
+                    "option": "knn"
+                  }
+                ]
+              }
+            },
+            {
+              "fieldLabel": "EDA plots",
+              "fieldType": "checkbox",
+              "requiredField": true,
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "hist"
+                  },
+                  {
+                    "option": "count"
+                  },
+                  {
+                    "option": "box"
+                  },
+                  {
+                    "option": "scatter"
+                  },
+                  {
+                    "option": "bar"
+                  },
+                  {
+                    "option": "heatmap_corr"
+                  }
+                ]
+              }
+            },
+            {
+              "fieldLabel": "Target column (optional)",
+              "fieldType": "text",
+              "placeholder": "leave empty to let the LLM decide"
+            },
+            {
+              "fieldLabel": "Your email",
+              "fieldType": "email",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {
+          "respondWithOptions": {
+            "values": {
+              "formSubmittedText": "Thanks! Training started - you will get an email with the report when it finishes."
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "n2",
+      "name": "Start run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:8000/runs",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "field-0"
+            },
+            {
+              "name": "algo",
+              "value": "={{ $json['Algorithm'] }}"
+            },
+            {
+              "name": "plots",
+              "value": "={{ Array.isArray($json['EDA plots']) ? $json['EDA plots'].join(',') : $json['EDA plots'] }}"
+            },
+            {
+              "name": "target",
+              "value": "={{ $json['Target column (optional)'] || '' }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "n3",
+      "name": "Wait 15s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        520,
+        300
+      ],
+      "webhookId": "automl-wait",
+      "parameters": {
+        "amount": 15,
+        "unit": "seconds"
+      }
+    },
+    {
+      "id": "n4",
+      "name": "Check status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        780,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=http://api:8000/runs/{{ $('Start run').item.json.run_id }}"
+      }
+    },
+    {
+      "id": "n5",
+      "name": "Done?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c-done",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "done",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "n6",
+      "name": "Failed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        460
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c-failed",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "failed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "n7",
+      "name": "Download report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1300,
+        160
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=http://api:8000/runs/{{ $json.run_id }}/report",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "n8",
+      "name": "Send report email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1560,
+        160
+      ],
+      "parameters": {
+        "fromEmail": "automl@example.com",
+        "toEmail": "={{ $('Upload form').item.json['Your email'] }}",
+        "subject": "=AutoML finished: {{ $('Check status').item.json.result.algorithm }} on {{ $('Check status').item.json.result.target }}",
+        "emailFormat": "text",
+        "text": "=Task: {{ $('Check status').item.json.result.task_type }}\nTest metrics: {{ JSON.stringify($('Check status').item.json.result.metrics.test) }}\nBaseline: {{ JSON.stringify($('Check status').item.json.result.metrics.baseline) }}\n\n{{ $('Check status').item.json.result.narrative }}\n\nThe full report with plots is attached (open report.html in a browser).",
+        "options": {
+          "attachments": "data"
+        }
+      },
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_ME",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "id": "n9",
+      "name": "Send failure email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1560,
+        420
+      ],
+      "parameters": {
+        "fromEmail": "automl@example.com",
+        "toEmail": "={{ $('Upload form').item.json['Your email'] }}",
+        "subject": "AutoML run failed",
+        "emailFormat": "text",
+        "text": "=Your run failed:\n\n{{ $json.error }}\n\nRun id: {{ $json.run_id }}",
+        "options": {}
+      },
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_ME",
+          "name": "SMTP account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Upload form": {
+      "main": [
+        [
+          {
+            "node": "Start run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start run": {
+      "main": [
+        [
+          {
+            "node": "Wait 15s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 15s": {
+      "main": [
+        [
+          {
+            "node": "Check status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check status": {
+      "main": [
+        [
+          {
+            "node": "Done?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Done?": {
+      "main": [
+        [
+          {
+            "node": "Download report",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Failed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Failed?": {
+      "main": [
+        [
+          {
+            "node": "Send failure email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait 15s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download report": {
+      "main": [
+        [
+          {
+            "node": "Send report email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

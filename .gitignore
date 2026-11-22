@@ -1,0 +1,17 @@
+
+runs/*
+!runs/.gitkeep
+
+
+# Environment variables
+.env
+.env.*
+.env.example
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Other
+.DS_Store

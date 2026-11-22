@@ -1,0 +1,30 @@
+services:
+  api:
+    build: .
+    env_file: .env
+    environment:
+      - RUNS_DIR=/srv/runs
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./runs:/srv/runs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  n8n:
+    image: n8nio/n8n:latest
+    ports:
+      - "5678:5678"
+    environment:
+      - GENERIC_TIMEZONE=UTC
+      - N8N_SECURE_COOKIE=false   
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on:
+      - api
+
+volumes:
+  n8n_data:
